@@ -1,0 +1,115 @@
+---
+title: "Mechanisms of Injury Meta-analysis"
+format: html
+editor: visual
+---
+
+## Using a meta-regression to determine whether TBI etiology produces distinct spectral power signatures 
+
+```{r}
+1 + 1
+```
+
+Necessary libraries
+
+```{r}
+library(metafor)
+library(tidyverse)
+library(readxl)
+library(psych)
+library(ggplot2)
+library(dplyr)
+library(sjPlot)
+library(lmerTest)
+library(lme4)
+```
+
+## Set directory and import data
+
+Imported data frame detailing study, age, sex, severity, mechanism and all 5 bands effect sized and variance.
+
+```{r}
+setwd('/Users/nwakamma.m/Documents/manscripts/EEG & TBI review/meta_analysis')
+moi_meta <- read_excel('eeg_tbi_meta_analysis.xlsx')
+```
+
+## Convert Cohen's D to Hedges G.
+
+Very necessary to adjust for sample size when calculating effect size. Hedge's G takes sample size into account. The escalc package can get hedges G. Used variance estimation formula using hedge's g effect size.
+
+```{r}
+g <- esc::hedges_g(0.62, 63)   #input cohen's d and total sample size to get hedge's g
+
+v <- (34 + 29)/(34 * 29) + g^2/(2*(34 + 29 - 2)) #get variance
+
+g
+
+v
+```
+
+## Multilevel Meta-regression with covariates
+
+```{r}
+moi_meta$mechanism <- as.factor(moi_meta$mechanism)
+moi_meta$severity <- as.numeric(moi_meta$severity)
+moi_meta$electrode_site <- as.numeric(moi_meta$electrode_site)
+
+study_labels <- c("Thompson et al., 2005 - S",
+"Balkan et al., 2015 - S",
+"Munia et al., 2017 - S",
+"Coyle et al., 2023 - NS",
+"Fisher et al., 2015 - NS",
+"Korn et al., 2005 - NS",
+"Tebano et al., 1988 - NS",
+"Williams et al., 2008 - M",
+"Li et al., 2015 - DS",
+"Teel et al., 2014 - Frontal - DS",
+"Teel et al., 2014 - Parietal - DS",
+"Teel et al., 2014 - Central - DS",
+"Nwakamma et al., 2024 - Whole brain - DS",
+"Nwakamma et al., 2024 - Fronto-parietal - DS",
+"Lewine et al., 2019 - B",
+"Franke et al., 2016 - Temporal - B",
+"Franke et al., 2016 - Frontal - B",
+"Modarres et al., 2016 - B",
+"Alkhachroum et al., 2024 - NS",
+"Arbour et al., 2015 - M")
+
+
+mlm_meta <- rma.mv(
+  yi = beta_effect_size,
+  V = beta_es_variance,
+  mods = ~ mechanism + age_tbi+ perc_tbi+ perc_control+time_since_injury,
+  random = list( ~ 1 | study_id),  # Random effect for studies
+  slab = study_labels,
+  method = "REML",    # Restricted maximum likelihood estimation
+  data = moi_meta)
+
+# View results
+summary(mlm_meta)
+
+
+ # Forest plot
+forest(mlm_meta)
+
+# Test for residual heterogeneity
+fit <- anova(mlm_meta,mlm_meta1, refit = TRUE)
+
+fit
+
+standard_mlm_meta <- rma(yi = alpha_effect_size, 
+                     vi = alpha_es_variance,
+                     slab = study_labels,
+                     method = "REML", data = moi_meta)
+
+summary(standard_mlm_meta)
+
+
+standard_mlm_meta$slab <- study_labels
+
+forest(standard_mlm_meta)
+
+meta_eggers <- ranktest(standard_mlm_meta)
+
+print(meta_eggers)
+```
