@@ -49,6 +49,8 @@ v
 
 ## Multilevel Meta-regression with covariates
 
+Get study labels
+
 ```{r}
 moi_meta$mechanism <- as.factor(moi_meta$mechanism)
 moi_meta$severity <- as.numeric(moi_meta$severity)
@@ -74,12 +76,51 @@ study_labels <- c("Thompson et al., 2005 - S",
 "Modarres et al., 2016 - B",
 "Alkhachroum et al., 2024 - NS",
 "Arbour et al., 2015 - M")
+```
 
+## Number of participants in each frequency band
+
+```{r}
+
+# to help avoind double counting
+moi_meta1 <- moi_meta |>
+  mutate(study_base = str_remove(study_id, " -.*"))
+
+meta_count <- moi_meta1 |> 
+  distinct(study_base, beta_effect_size, tbi, controls) |>
+  group_by(beta_effect_size) |>
+  summarise(
+    total_TBI = sum(tbi, na.rm = TRUE),
+    total_control = sum(controls, na.rm = TRUE),
+    total_N = total_TBI + total_control,
+    k = n()  # number of studies/effect sizes
+  )
+
+meta_count
+
+table(moi_meta1$study_base)
+```
+
+```{r}
+
+#performed normality test and tested for significant differences in specific moderator variables to determine which variable to put into model to simple model output and interprebility.
+
+shapiro.test(moi_meta$perc_tbi) # to detect normality of data
+
+t.test(moi_meta$age_tbi[moi_meta$delta_effect_size], moi_meta$age_control[moi_meta$delta_effect_size]) # if data is parametric
+
+# Or non-parametric if non-normal
+wilcox.test(moi_meta$perc_tbi, moi_meta$perc_control, paired = TRUE)
+
+# Used difference score in sex variable to input into model for simplicity
+moi_meta$sex_diff <- moi_meta$perc_tbi - moi_meta$perc_control
+
+moi_meta$severity <- as.factor(moi_meta$severity)
 
 mlm_meta <- rma.mv(
-  yi = beta_effect_size,
-  V = beta_es_variance,
-  mods = ~ mechanism + age_tbi+ perc_tbi+ perc_control+time_since_injury,
+  yi = theta_effect_size,
+  V = theta_es_variance,
+  mods = ~ age_tbi + sd_tbi,
   random = list( ~ 1 | study_id),  # Random effect for studies
   slab = study_labels,
   method = "REML",    # Restricted maximum likelihood estimation
@@ -88,28 +129,103 @@ mlm_meta <- rma.mv(
 # View results
 summary(mlm_meta)
 
+mlm_meta1 <- rma.mv(
+  yi = delta_effect_size,
+  V = delta_es_variance,
+  random = list( ~ 1 | study_id),  # Random effect for studies
+  slab = study_labels,
+  method = "REML",    # Restricted maximum likelihood estimation
+  data = moi_meta)
+
+fit <- anova(mlm_meta1,mlm_meta, refit = TRUE)
+
+fit
+
+# View results
+summary(mlm_meta1)
+
 
  # Forest plot
 forest(mlm_meta)
 
+```
+
+```{r}
+
 # Test for residual heterogeneity
-fit <- anova(mlm_meta,mlm_meta1, refit = TRUE)
 
-fit
+mlm_meta1$slab <- study_labels
 
-standard_mlm_meta <- rma(yi = alpha_effect_size, 
-                     vi = alpha_es_variance,
-                     slab = study_labels,
-                     method = "REML", data = moi_meta)
-
-summary(standard_mlm_meta)
-
-
-standard_mlm_meta$slab <- study_labels
-
-forest(standard_mlm_meta)
-
-meta_eggers <- ranktest(standard_mlm_meta)
+meta_eggers <- ranktest(mlm_meta1)
 
 print(meta_eggers)
+```
+
+## Sample-based Funnel Plots with different p-value thresholds
+
+```{r}
+
+sei <- sqrt(moi_meta$alpha_es_variance[!is.na(moi_meta$alpha_es_variance) & !is.na(moi_meta$beta_es_variance)])
+
+# Extract the data you need
+effect_sizes <- moi_meta$alpha_effect_size[!is.na(moi_meta$alpha_effect_size)]
+sample_sizes <- moi_meta$tbi[!is.na(moi_meta$alpha_effect_size)] + 
+                moi_meta$controls[!is.na(moi_meta$alpha_effect_size)]  # Total N across both groups
+
+max_n <- max(sample_sizes, na.rm = TRUE)
+min_n <- min(sample_sizes, na.rm = TRUE)
+n_sequence <- seq(min_n, max_n, length.out = 100)
+precision <- sqrt(4/n_sequence)  # Approximation based on precision
+mean_es <- mean(effect_sizes, na.rm = TRUE)
+
+x_10 <- c(mean_es + 1.64 * precision, rev(mean_es - 1.64 * precision))
+y_10 <- c(n_sequence, rev(n_sequence))
+
+x_05 <- c(mean_es + 1.96 * precision, rev(mean_es - 1.96 * precision))
+y_05 <- c(n_sequence, rev(n_sequence))
+
+x_01 <- c(mean_es + 2.58 * precision, rev(mean_es - 2.58 * precision))
+y_01 <- c(n_sequence, rev(n_sequence))
+
+x_001 <- c(mean_es + 3.29 * precision, rev(mean_es - 3.29 * precision))
+y_001 <- c(n_sequence, rev(n_sequence))
+
+
+
+# Create overall sample-based funnel plot, which will be seperate from the frequency bands based ones.
+
+moi_meta_longer <- moi_meta %>%
+  pivot_longer(cols = -age_tbi, names_to = "Domains of bias", values_to = "Count")
+
+bias_data$`Domains of bias` <- factor(bias_data$`Domains of bias`, 
+                                      levels = c("Overall","Reported_result", "Outcome", "Missing_data","Post_interventions", 
+                                                 "Selection","Exposure", "Confounding"))
+
+bias_data$Risk_of_bias <- factor(bias_data$Risk_of_bias, 
+                                 levels = c( "Very high risk", "High risk", "Some concerns", "Low risk"))
+
+
+# Create the plot
+plot(effect_sizes, sample_sizes,
+     xlab = "Effect Size",
+     ylab = "Sample Size",
+     pch = 19,
+     main = "Alpha Sample Size-Based Funnel Plot",
+     ylim = c(min(sample_sizes) , max(sample_sizes)),
+     xlim = c(min(effect_sizes) - 0.5, max(effect_sizes) + 0.5)) + 
+abline(v = mean(effect_sizes, na.rm = TRUE), lty = "dashed")  + 
+lines(mean_es - 1.64 * precision, n_sequence, col = "gray60",lwd = 2)+ 
+lines(mean_es + 1.64 * precision, n_sequence, col = "gray60",lwd = 2)+
+lines(mean_es + 1.96 * precision, n_sequence, col = "gray70", lwd = 2) + 
+lines(mean_es - 1.96 * precision, n_sequence, col = "gray70",lwd = 2) +
+lines(mean_es + 2.58 * precision, n_sequence, col = "gray80",lwd = 2) + 
+lines(mean_es - 2.58 * precision, n_sequence, col = "gray80",lwd = 2) + 
+lines(mean_es + 3.29 * precision, n_sequence, col = "gray90",lwd = 2) +
+lines(mean_es - 3.29 * precision, n_sequence, col = "gray90",lwd = 2) +
+  legend("topleft", 
+       c("p < 0.10", "p < 0.05", "p < 0.01", "p < 0.001"),
+       lty = c("solid", "solid", "solid", "solid"),
+       col = c("gray90", "gray80", "gray70", "gray60"),
+       lwd = 2) 
+
 ```
