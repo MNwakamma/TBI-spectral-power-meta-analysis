@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-## Using a meta-regression to determine whether TBI etiology produces distinct spectral power signatures 
+## Using a meta-regression to determine whether TBI etiology produces distinct spectral power signatures
 
 ```{r}
 1 + 1
@@ -76,6 +76,26 @@ study_labels <- c("Thompson et al., 2005 - S",
 "Modarres et al., 2016 - B",
 "Alkhachroum et al., 2024 - NS",
 "Arbour et al., 2015 - M")
+
+study_labelsOUT <- c("Thompson et al., 2005 - S",
+"Balkan et al., 2015 - S",
+"Munia et al., 2017 - S",
+"Coyle et al., 2023 - NS",
+"Fisher et al., 2015 - NS",
+"Korn et al., 2005 - NS",
+"Tebano et al., 1988 - NS",
+"Williams et al., 2008 - M",
+"Teel et al., 2014 - Frontal - DS",
+"Teel et al., 2014 - Parietal - DS",
+"Teel et al., 2014 - Central - DS",
+"Nwakamma et al., 2024 - Whole brain - DS",
+"Nwakamma et al., 2024 - Fronto-parietal - DS",
+"Lewine et al., 2019 - B",
+"Franke et al., 2016 - Temporal - B",
+"Franke et al., 2016 - Frontal - B",
+"Modarres et al., 2016 - B",
+"Alkhachroum et al., 2024 - NS",
+"Arbour et al., 2015 - M")
 ```
 
 ## Number of participants in each frequency band
@@ -103,6 +123,8 @@ table(moi_meta1$study_base)
 
 ```{r}
 
+moi_metaOUT<- moi_meta[-c(9),]
+
 #performed normality test and tested for significant differences in specific moderator variables to determine which variable to put into model to simple model output and interprebility.
 
 shapiro.test(moi_meta$perc_tbi) # to detect normality of data
@@ -117,17 +139,17 @@ moi_meta$sex_diff <- moi_meta$perc_tbi - moi_meta$perc_control
 
 moi_meta$severity <- as.factor(moi_meta$severity)
 
-mlm_meta <- rma.mv(
+mlm_metaOUT <- rma.mv(
   yi = theta_effect_size,
   V = theta_es_variance,
-  mods = ~ age_tbi + sd_tbi,
+  mods = ~ mechanism,
   random = list( ~ 1 | study_id),  # Random effect for studies
-  slab = study_labels,
+  slab = study_labelsOUT,
   method = "REML",    # Restricted maximum likelihood estimation
-  data = moi_meta)
+  data = moi_metaOUT)
 
 # View results
-summary(mlm_meta)
+summary(mlm_metaOUT)
 
 mlm_meta1 <- rma.mv(
   yi = delta_effect_size,
@@ -137,16 +159,48 @@ mlm_meta1 <- rma.mv(
   method = "REML",    # Restricted maximum likelihood estimation
   data = moi_meta)
 
-fit <- anova(mlm_meta1,mlm_meta, refit = TRUE)
-
-fit
-
 # View results
 summary(mlm_meta1)
 
+fit <- anova(mlm_metaOUT,mlm_meta)
+
+fit
+
+
+
+```
+
+FOREST PLOTS
+
+```{r}
+mlm_meta1$slab <- study_labels
+
 
  # Forest plot
-forest(mlm_meta)
+forest(mlm_meta1)
+
+# Define row positions (working from top to bottom, leaving gaps for headers)
+# Total: 20 studies + 2 headers + spacing
+
+forest(mlm_meta1,
+       xlim = c(-10, 8),
+       ylim = c(-1, 26),
+       rows = c(24:22,      # Mechanism 1 (3 studies)
+                20:16,      # Mechanism 2 (5 studies)
+                9:4,        # Mechanism 4 (6 studies)
+                2:-1),      # Mechanism 5 (4 studies) - adjusted for spacing
+       header = "Study",
+       cex = 0.8)
+
+# 12:11,      # Mechanism 3 (2 studies)
+# Add subgroup headers
+# Adjust the row numbers and labels based on which mechanisms are sports vs non-sports
+
+# If mechanisms 1-2 are sports-related:
+text(-10, 25, "Sports-Related Concussion", pos = 4, font = 2, cex = 0.9)
+
+# If mechanisms 3-5 are non-sports-related:
+text(-10, 14, "Non-Sports-Related TBI", pos = 4, font = 2, cex = 0.9)
 
 ```
 
@@ -154,9 +208,9 @@ forest(mlm_meta)
 
 # Test for residual heterogeneity
 
-mlm_meta1$slab <- study_labels
+mlm_metaOUT$slab <- study_labelsOUT
 
-meta_eggers <- ranktest(mlm_meta1)
+meta_eggers <- ranktest(mlm_metaOUT)
 
 print(meta_eggers)
 ```
