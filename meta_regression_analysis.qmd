@@ -6,10 +6,6 @@ editor: visual
 
 ## Using a meta-regression to determine whether TBI etiology produces distinct spectral power signatures
 
-```{r}
-1 + 1
-```
-
 Necessary libraries
 
 ```{r}
@@ -55,35 +51,15 @@ Get study labels
 moi_meta$mechanism <- as.factor(moi_meta$mechanism)
 moi_meta$severity <- as.numeric(moi_meta$severity)
 moi_meta$electrode_site <- as.numeric(moi_meta$electrode_site)
+moi_meta$common_range <- as.factor(moi_meta$common_range)
 
 study_labels <- c("Thompson et al., 2005 - S",
 "Balkan et al., 2015 - S",
 "Munia et al., 2017 - S",
-"Coyle et al., 2023 - NS",
-"Fisher et al., 2015 - NS",
-"Korn et al., 2005 - NS",
-"Tebano et al., 1988 - NS",
-"Williams et al., 2008 - M",
-"Li et al., 2015 - DS",
-"Teel et al., 2014 - Frontal - DS",
-"Teel et al., 2014 - Parietal - DS",
-"Teel et al., 2014 - Central - DS",
-"Nwakamma et al., 2024 - Whole brain - DS",
-"Nwakamma et al., 2024 - Fronto-parietal - DS",
-"Lewine et al., 2019 - B",
-"Franke et al., 2016 - Temporal - B",
-"Franke et al., 2016 - Frontal - B",
-"Modarres et al., 2016 - B",
-"Alkhachroum et al., 2024 - NS",
-"Arbour et al., 2015 - M")
-
-study_labelsOUT <- c("Thompson et al., 2005 - S",
-"Balkan et al., 2015 - S",
-"Munia et al., 2017 - S",
-"Coyle et al., 2023 - NS",
-"Fisher et al., 2015 - NS",
-"Korn et al., 2005 - NS",
-"Tebano et al., 1988 - NS",
+"Coyle et al., 2023 - G",
+"Fisher et al., 2015 - G",
+"Korn et al., 2005 - G",
+"Tebano et al., 1988 - G",
 "Williams et al., 2008 - M",
 "Teel et al., 2014 - Frontal - DS",
 "Teel et al., 2014 - Parietal - DS",
@@ -94,7 +70,7 @@ study_labelsOUT <- c("Thompson et al., 2005 - S",
 "Franke et al., 2016 - Temporal - B",
 "Franke et al., 2016 - Frontal - B",
 "Modarres et al., 2016 - B",
-"Alkhachroum et al., 2024 - NS",
+"Alkhachroum et al., 2024 - G",
 "Arbour et al., 2015 - M")
 ```
 
@@ -135,37 +111,34 @@ t.test(moi_meta$age_tbi[moi_meta$delta_effect_size], moi_meta$age_control[moi_me
 wilcox.test(moi_meta$perc_tbi, moi_meta$perc_control, paired = TRUE)
 
 # Used difference score in sex variable to input into model for simplicity
-moi_meta$sex_diff <- moi_meta$perc_tbi - moi_meta$perc_control
+moi_metaOUT$sex_diff <- moi_metaOUT$perc_tbi - moi_metaOUT$perc_control
 
 moi_meta$severity <- as.factor(moi_meta$severity)
 
-mlm_metaOUT <- rma.mv(
-  yi = theta_effect_size,
-  V = theta_es_variance,
-  mods = ~ mechanism,
+moi_meta_common <- moi_meta |> filter(common_range == 0)
+moi_meta_uncommon <- moi_meta |> filter(common_range == 1)
+
+mlm_meta<- rma.mv(
+  yi = beta_effect_size,
+  V = beta_es_variance,
+  mods = ~ common_range,
   random = list( ~ 1 | study_id),  # Random effect for studies
-  slab = study_labelsOUT,
   method = "REML",    # Restricted maximum likelihood estimation
-  data = moi_metaOUT)
+  data = moi_meta)
 
 # View results
-summary(mlm_metaOUT)
+summary(mlm_meta)
 
 mlm_meta1 <- rma.mv(
-  yi = delta_effect_size,
-  V = delta_es_variance,
-  random = list( ~ 1 | study_id),  # Random effect for studies
+  yi = theta_effect_size,
+  V = theta_es_variance,
   slab = study_labels,
+  random = list( ~ 1 | study_id),  # Random effect for studies
   method = "REML",    # Restricted maximum likelihood estimation
   data = moi_meta)
 
 # View results
 summary(mlm_meta1)
-
-fit <- anova(mlm_metaOUT,mlm_meta)
-
-fit
-
 
 
 ```
@@ -173,34 +146,11 @@ fit
 FOREST PLOTS
 
 ```{r}
-mlm_meta1$slab <- study_labels
 
+mlm_meta1$slab <- study_labels
 
  # Forest plot
 forest(mlm_meta1)
-
-# Define row positions (working from top to bottom, leaving gaps for headers)
-# Total: 20 studies + 2 headers + spacing
-
-forest(mlm_meta1,
-       xlim = c(-10, 8),
-       ylim = c(-1, 26),
-       rows = c(24:22,      # Mechanism 1 (3 studies)
-                20:16,      # Mechanism 2 (5 studies)
-                9:4,        # Mechanism 4 (6 studies)
-                2:-1),      # Mechanism 5 (4 studies) - adjusted for spacing
-       header = "Study",
-       cex = 0.8)
-
-# 12:11,      # Mechanism 3 (2 studies)
-# Add subgroup headers
-# Adjust the row numbers and labels based on which mechanisms are sports vs non-sports
-
-# If mechanisms 1-2 are sports-related:
-text(-10, 25, "Sports-Related Concussion", pos = 4, font = 2, cex = 0.9)
-
-# If mechanisms 3-5 are non-sports-related:
-text(-10, 14, "Non-Sports-Related TBI", pos = 4, font = 2, cex = 0.9)
 
 ```
 
@@ -208,9 +158,7 @@ text(-10, 14, "Non-Sports-Related TBI", pos = 4, font = 2, cex = 0.9)
 
 # Test for residual heterogeneity
 
-mlm_metaOUT$slab <- study_labelsOUT
-
-meta_eggers <- ranktest(mlm_metaOUT)
+meta_eggers <- ranktest(mlm_meta1)
 
 print(meta_eggers)
 ```
@@ -219,12 +167,12 @@ print(meta_eggers)
 
 ```{r}
 
-sei <- sqrt(moi_meta$alpha_es_variance[!is.na(moi_meta$alpha_es_variance) & !is.na(moi_meta$beta_es_variance)])
+sei <- sqrt(moi_meta$beta_es_variance[!is.na(moi_meta$beta_es_variance) & !is.na(moi_meta$beta_es_variance)])
 
 # Extract the data you need
-effect_sizes <- moi_meta$alpha_effect_size[!is.na(moi_meta$alpha_effect_size)]
-sample_sizes <- moi_meta$tbi[!is.na(moi_meta$alpha_effect_size)] + 
-                moi_meta$controls[!is.na(moi_meta$alpha_effect_size)]  # Total N across both groups
+effect_sizes <- moi_meta$beta_effect_size[!is.na(moi_meta$beta_effect_size)]
+sample_sizes <- moi_meta$tbi[!is.na(moi_meta$beta_effect_size)] + 
+                moi_meta$controls[!is.na(moi_meta$beta_effect_size)]  # Total N across both groups
 
 max_n <- max(sample_sizes, na.rm = TRUE)
 min_n <- min(sample_sizes, na.rm = TRUE)
@@ -246,17 +194,7 @@ y_001 <- c(n_sequence, rev(n_sequence))
 
 
 
-# Create overall sample-based funnel plot, which will be seperate from the frequency bands based ones.
-
-moi_meta_longer <- moi_meta %>%
-  pivot_longer(cols = -age_tbi, names_to = "Domains of bias", values_to = "Count")
-
-bias_data$`Domains of bias` <- factor(bias_data$`Domains of bias`, 
-                                      levels = c("Overall","Reported_result", "Outcome", "Missing_data","Post_interventions", 
-                                                 "Selection","Exposure", "Confounding"))
-
-bias_data$Risk_of_bias <- factor(bias_data$Risk_of_bias, 
-                                 levels = c( "Very high risk", "High risk", "Some concerns", "Low risk"))
+# Create overall sample-based funnel plot, which will be seperate from the frequency bands based ones
 
 
 # Create the plot
@@ -264,7 +202,7 @@ plot(effect_sizes, sample_sizes,
      xlab = "Effect Size",
      ylab = "Sample Size",
      pch = 19,
-     main = "Alpha Sample Size-Based Funnel Plot",
+     main = "Beta Sample Size-Based Funnel Plot",
      ylim = c(min(sample_sizes) , max(sample_sizes)),
      xlim = c(min(effect_sizes) - 0.5, max(effect_sizes) + 0.5)) + 
 abline(v = mean(effect_sizes, na.rm = TRUE), lty = "dashed")  + 
