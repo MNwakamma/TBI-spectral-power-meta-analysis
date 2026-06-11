@@ -25,7 +25,7 @@ library(lme4)
 Imported data frame detailing study, age, sex, severity, mechanism and all 5 bands effect sized and variance.
 
 ```{r}
-setwd('/Users/nwakamma.m/Documents/manscripts/EEG & TBI review/meta_analysis')
+setwd('/Users/marknwakamma/Documents')
 moi_meta <- read_excel('eeg_tbi_meta_analysis.xlsx')
 ```
 
@@ -43,15 +43,12 @@ g
 v
 ```
 
-## Multilevel Meta-regression with covariates
-
-Get study labels
+## Get study labels
 
 ```{r}
 moi_meta$mechanism <- as.factor(moi_meta$mechanism)
 moi_meta$severity <- as.numeric(moi_meta$severity)
 moi_meta$electrode_site <- as.numeric(moi_meta$electrode_site)
-moi_meta$common_range <- as.factor(moi_meta$common_range)
 
 study_labels <- c("Thompson et al., 2005 - S",
 "Balkan et al., 2015 - S",
@@ -95,13 +92,18 @@ meta_count <- moi_meta1 |>
 meta_count
 
 table(moi_meta1$study_base)
+
+
 ```
+
+## Multilevel Meta-regression with covariates
+
+performed normality test and tested for significant differences in specific moderator variables to determine which variable to put into model to simple model output and interprebility.
 
 ```{r}
 
-moi_metaOUT<- moi_meta[-c(9),]
+moi_metaOUT<- moi_meta[-c(9),] #removing outliers
 
-#performed normality test and tested for significant differences in specific moderator variables to determine which variable to put into model to simple model output and interprebility.
 
 shapiro.test(moi_meta$perc_tbi) # to detect normality of data
 
@@ -115,13 +117,12 @@ moi_metaOUT$sex_diff <- moi_metaOUT$perc_tbi - moi_metaOUT$perc_control
 
 moi_meta$severity <- as.factor(moi_meta$severity)
 
-moi_meta_common <- moi_meta |> filter(common_range == 0)
-moi_meta_uncommon <- moi_meta |> filter(common_range == 1)
 
-mlm_meta<- rma.mv(
-  yi = beta_effect_size,
-  V = beta_es_variance,
-  mods = ~ common_range,
+mlm_meta <- rma.mv(
+  yi = delta_effect_size,
+  V = delta_es_variance,
+  #mods = ~mechanism,
+  slab = study_labels,
   random = list( ~ 1 | study_id),  # Random effect for studies
   method = "REML",    # Restricted maximum likelihood estimation
   data = moi_meta)
@@ -129,21 +130,21 @@ mlm_meta<- rma.mv(
 # View results
 summary(mlm_meta)
 
-mlm_meta1 <- rma.mv(
-  yi = theta_effect_size,
-  V = theta_es_variance,
-  slab = study_labels,
-  random = list( ~ 1 | study_id),  # Random effect for studies
-  method = "REML",    # Restricted maximum likelihood estimation
-  data = moi_meta)
+```
 
-# View results
-summary(mlm_meta1)
+## Multiple comparisons - FDR correction
 
+```{r}
+
+p_values <- c(0.8586, 0.2260, 0.8260, 0.8096, 0.2335,0.0110,0.0338,0.3236,0.2523,0.4319,0.4135,0.6439,0.9637,0.8431,0.8353,0.8204)
+
+p_values <- c(0.3217, 0.03, 0.8999,0.1361)
+
+p.adjust(p_values, method = "BH")
 
 ```
 
-FOREST PLOTS
+## Forest plots
 
 ```{r}
 
@@ -153,6 +154,8 @@ mlm_meta1$slab <- study_labels
 forest(mlm_meta1)
 
 ```
+
+## Publication bias - Egger's test
 
 ```{r}
 
@@ -221,3 +224,25 @@ lines(mean_es - 3.29 * precision, n_sequence, col = "gray90",lwd = 2) +
        lwd = 2) 
 
 ```
+
+## Common vs. uncommon frequency bands
+
+```{r}
+moi_meta_common <- moi_meta |> filter(common_range == 0)
+moi_meta_uncommon <- moi_meta |> filter(common_range == 1)
+
+moi_meta$common_range <- as.factor(moi_meta$common_range)
+
+mlm_meta<- rma.mv(
+  yi = beta_effect_size,
+  V = beta_es_variance,
+  mods = ~ common_range,
+  random = list( ~ 1 | study_id),  # Random effect for studies
+  method = "REML",    # Restricted maximum likelihood estimation
+  data = moi_meta)
+
+# View results
+summary(mlm_meta)
+```
+
+## 
